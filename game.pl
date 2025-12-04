@@ -1,8 +1,3 @@
-:- encoding(utf8).
-
-:- use_module(library(random)).
-:- use_module(library(readutil)).
-
 :- dynamic role/2.
 :- dynamic location/2.
 :- dynamic alive/1.
@@ -20,9 +15,9 @@
 :- dynamic alone_counter/2.
 
 %% Static task definitions
-base_task(collect_food, '收集食材', kitchen, 2).
-base_task(repair_wiring, '修理电路', living_room, 3).
-base_task(clean_vent, '清理通风管', bedroom, 2).
+base_task(collect_food, "收集食材", kitchen, 2).
+base_task(repair_wiring, "修理电路", living_room, 3).
+base_task(clean_vent, "清理通风管", bedroom, 2).
 
 %% Map connectivity
 connected(kitchen, living_room).
