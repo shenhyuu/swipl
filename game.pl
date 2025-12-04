@@ -213,16 +213,17 @@ player_action :-
 player_turn :-
     location(fox, Scene),
     format("\n你在 ~w。选择操作：(m)移动 (k)杀兔 (w)等待 > ", [Scene]),
-    read_line_to_string(user_input, choice),
-    handle_player_choice(choice).
+    read_line_to_string(user_input, RawChoice),
+    sanitize_input(RawChoice, Choice),
+    handle_player_choice(Choice).
 
-handle_player_choice("m") :-
+handle_player_choice(m) :-
     location(fox, Scene),
     findall(Adj, connected(Scene, Adj), Adjs),
     ( Adjs = [] -> format("没有可移动的相邻场景。~n")
     ; format("可前往: ~w~n", [Adjs]),
       read_line_to_string(user_input, DestStr),
-      atom_string(Dest, DestStr),
+      sanitize_input(DestStr, Dest),
       ( member(Dest, Adjs) ->
             move_character(fox, Dest),
             format("移动到 ~w。~n", [Dest])
@@ -230,9 +231,9 @@ handle_player_choice("m") :-
       )
     ),
     kill_prompt.
-handle_player_choice("k") :-
+handle_player_choice(k) :-
     kill_prompt.
-handle_player_choice("w") :-
+handle_player_choice(w) :-
     format("你选择等待。~n"), kill_prompt.
 handle_player_choice(_) :-
     format("输入无效，默认等待。~n"), kill_prompt.
@@ -245,7 +246,7 @@ kill_prompt :-
       ( Rabbits = [] -> format("哎呀，兔子都躲猫猫了！下次试试移动？~n")
       ; format("可击杀的兔子: ~w~n", [Rabbits]),
         read_line_to_string(user_input, TargetStr),
-        atom_string(Target, TargetStr),
+        sanitize_input(TargetStr, Target),
         ( member(Target, Rabbits) ->
             eliminate(Target, kill),
             assertz(corpse(Scene, Target)),
@@ -388,7 +389,7 @@ player_vote(Vote) :-
     findall(Name, alive(Name), Alive),
     format("存活角色: ~w~n", [Alive]),
     read_line_to_string(user_input, VoteStr),
-    atom_string(VoteAtom, VoteStr),
+    sanitize_input(VoteStr, VoteAtom),
     ( member(VoteAtom, Alive) -> Vote = VoteAtom
     ; format("输入无效，默认弃权，随机投票。~n"), random_other(fox, Vote)
     ).
@@ -467,4 +468,21 @@ task_in_scene(Scene, Id, Status, Occupant) :-
     Status \= completed.
 
 task_scene(Scene) :- base_task(_, _, Scene, _).
+
+%% Input helpers
+sanitize_input(Raw, CleanAtom) :-
+    normalize_space(string(Trimmed), Raw),
+    string_lower(Trimmed, Lower),
+    remove_trailing_punctuation(Lower, CleanString),
+    atom_string(CleanAtom, CleanString).
+
+remove_trailing_punctuation(String, Clean) :-
+    ( string_length(String, Len), Len > 0,
+      sub_string(String, _, 1, 0, Last),
+      memberchk(Last, [".", "!", "?", " "]) ->
+        Start is Len - 1,
+        sub_string(String, 0, Start, 1, Sub),
+        remove_trailing_punctuation(Sub, Clean)
+    ; Clean = String
+    ).
 
