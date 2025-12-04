@@ -1,8 +1,3 @@
-:- encoding(utf8).
-
-:- use_module(library(random)).
-:- use_module(library(readutil)).
-
 :- dynamic role/2.
 :- dynamic location/2.
 :- dynamic alive/1.
@@ -20,9 +15,9 @@
 :- dynamic alone_counter/2.
 
 %% Static task definitions
-base_task(collect_food, '收集食材', kitchen, 2).
-base_task(repair_wiring, '修理电路', living_room, 3).
-base_task(clean_vent, '清理通风管', bedroom, 2).
+base_task(collect_food, "收集食材", kitchen, 2).
+base_task(repair_wiring, "修理电路", living_room, 3).
+base_task(clean_vent, "清理通风管", bedroom, 2).
 
 %% Map connectivity
 connected(kitchen, living_room).
@@ -77,16 +72,12 @@ init_roles :-
     forall(role(Name, _), assertz(alive(Name))).
 
 init_locations :-
-    FoxScene = living_room,
-    assertz(location(fox, FoxScene)),
+    assertz(location(fox, living_room)),
     assertz(location(rabbit1, kitchen)),
     assertz(location(rabbit2, bathroom)),
     assertz(location(rabbit3, bedroom)),
     assertz(location(rabbit4, balcony)),
-    scenes(SceneList),
-    findall(S, (member(S, SceneList), S \= FoxScene), CandidateScenes),
-    random_member(DetectiveScene, CandidateScenes),
-    assertz(location(detective, DetectiveScene)),
+    assertz(location(detective, living_room)),
     forall(role(Name, _), (
         assertz(not_in_task_counter(Name, 0)),
         assertz(alone_counter(Name, 0))
@@ -221,23 +212,14 @@ player_action :-
 
 player_turn :-
     location(fox, Scene),
-    display_room_others(Scene),
-    kill_available(Scene, CanKill),
-    action_prompt(Scene, CanKill),
+    format("\n你在 ~w。选择操作：(m)移动 (k)杀兔 (w)等待 > ", [Scene]),
     read_line_to_string(user_input, choice),
-    handle_player_choice(choice, CanKill).
+    handle_player_choice(choice).
 
-action_prompt(Scene, true) :-
-    format("\n你在 ~w。选择操作：(m)移动 (k)杀兔 (w)等待 > ", [Scene]).
-action_prompt(Scene, false) :-
-    format("\n你在 ~w。选择操作：(m)移动 (w)等待 > ", [Scene]).
-
-handle_player_choice("m", _) :-
+handle_player_choice("m") :-
     location(fox, Scene),
     findall(Adj, connected(Scene, Adj), Adjs),
-    ( Adjs = [] ->
-        format("没有可移动的相邻场景。~n"),
-        display_room_others(Scene)
+    ( Adjs = [] -> format("没有可移动的相邻场景。~n")
     ; format("可前往: ~w~n", [Adjs]),
       read_line_to_string(user_input, DestStr),
       atom_string(Dest, DestStr),
@@ -247,39 +229,32 @@ handle_player_choice("m", _) :-
         ; format("输入无效，保持原地。~n")
       )
     ),
-    location(fox, NewScene),
-    display_room_others(NewScene),
-    maybe_kill_followup(NewScene).
-handle_player_choice("k", true) :-
     kill_prompt.
-handle_player_choice("k", false) :-
-    format("当前无法击杀：冷却未结束或房间没有其他存活角色。~n").
-handle_player_choice("w", _) :-
-    format("你选择等待。~n").
-handle_player_choice(_, _) :-
-    format("输入无效，默认等待。~n").
+handle_player_choice("k") :-
+    kill_prompt.
+handle_player_choice("w") :-
+    format("你选择等待。~n"), kill_prompt.
+handle_player_choice(_) :-
+    format("输入无效，默认等待。~n"), kill_prompt.
 
 kill_prompt :-
-    location(fox, Scene),
-    kill_available(Scene, true),
-    room_targets(Scene, Targets),
-    format("当前房间可击杀的角色: ~w~n请输入要击杀的角色名称 > ", [Targets]),
-    read_line_to_string(user_input, TargetStr),
-    atom_string(Target, TargetStr),
-    ( member(Target, Targets) ->
-        eliminate(Target, kill),
-        assertz(corpse(Scene, Target)),
-        set_kill_cooldown(3),
-        format("你击杀了 ~w！~n", [Target])
-    ;   format("未选择有效目标，放弃击杀。~n")
+    kill_cooldown(CD),
+    ( CD > 0 -> format("杀兔技能冷却中，还需 ~d 轮。~n", [CD])
+    ; location(fox, Scene),
+      findall(Rabbit, (alive(Rabbit), role(Rabbit, Type), Type \= fox, location(Rabbit, Scene)), Rabbits),
+      ( Rabbits = [] -> format("哎呀，兔子都躲猫猫了！下次试试移动？~n")
+      ; format("可击杀的兔子: ~w~n", [Rabbits]),
+        read_line_to_string(user_input, TargetStr),
+        atom_string(Target, TargetStr),
+        ( member(Target, Rabbits) ->
+            eliminate(Target, kill),
+            assertz(corpse(Scene, Target)),
+            set_kill_cooldown(3),
+            format("你击杀了 ~w！~n", [Target])
+          ; format("未选择有效目标，放弃击杀。~n")
+        )
+      )
     ).
-
-maybe_kill_followup(Scene) :-
-    ( kill_available(Scene, true) ->
-        format("击杀功能可用，输入 k 进行击杀，其他键结束回合 > "),
-        read_line_to_string(user_input, Resp),
-        ( Resp = "k" -> kill_prompt ; format("你选择不进行击杀。~n") )
-    ; true).
 
 set_kill_cooldown(N) :-
     retractall(kill_cooldown(_)),
@@ -486,26 +461,10 @@ show_status :-
 
 %% Helper predicates
 
-display_room_others(Scene) :-
-    findall(Name-Type, (alive(Name), Name \= fox, role(Name, Type), location(Name, Scene)), Others),
-    ( Others = [] -> format("房间内没有其他存活角色。~n")
-    ; format("房间内的其他角色: ~w~n", [Others])
-    ).
-
 task_in_scene(Scene, Id, Status, Occupant) :-
     base_task(Id, _, Scene, _),
     task_state(Id, Status, _, Occupant),
     Status \= completed.
 
 task_scene(Scene) :- base_task(_, _, Scene, _).
-
-kill_available(Scene, true) :-
-    kill_cooldown(0),
-    room_targets(Scene, Targets),
-    Targets \= [],
-    !.
-kill_available(_, false).
-
-room_targets(Scene, Targets) :-
-    findall(Rabbit, (alive(Rabbit), role(Rabbit, Type), Type \= fox, location(Rabbit, Scene)), Targets).
 
